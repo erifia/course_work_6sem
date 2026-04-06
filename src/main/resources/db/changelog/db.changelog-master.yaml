@@ -1,0 +1,157 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-schema
+      author: course-work
+      changes:
+        - sql:
+            # splitStatements нельзя включать для $$-функций (иначе Liquibase делит тело функции).
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE TABLE IF NOT EXISTS role (
+                role_id BIGSERIAL PRIMARY KEY,
+                role_name VARCHAR(50) NOT NULL UNIQUE
+              );
+
+              CREATE TABLE IF NOT EXISTS user_account (
+                user_account_id BIGSERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL UNIQUE,
+                password_hash VARCHAR(255) NOT NULL,
+                email VARCHAR(100) NOT NULL UNIQUE,
+                role_id BIGINT NOT NULL REFERENCES role(role_id),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );
+
+              CREATE TABLE IF NOT EXISTS refresh_token (
+                token_id BIGSERIAL PRIMARY KEY,
+                user_account_id BIGINT NOT NULL REFERENCES user_account(user_account_id) ON DELETE CASCADE,
+                token_hash VARCHAR(255) NOT NULL UNIQUE,
+                expires_at TIMESTAMPTZ NOT NULL,
+                revoked_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );
+
+              CREATE TABLE IF NOT EXISTS district (
+                district_id BIGSERIAL PRIMARY KEY,
+                district_name VARCHAR(100) NOT NULL UNIQUE,
+                avg_price NUMERIC(15,2),
+                demand_level INTEGER CHECK (demand_level BETWEEN 1 AND 10)
+              );
+
+              CREATE TABLE IF NOT EXISTS estate (
+                estate_id BIGSERIAL PRIMARY KEY,
+                district_id BIGINT NOT NULL REFERENCES district(district_id),
+                created_by BIGINT REFERENCES user_account(user_account_id),
+                address VARCHAR(255) NOT NULL,
+                property_type VARCHAR(50) NOT NULL DEFAULT 'APARTMENT',
+                rooms INTEGER NOT NULL CHECK (rooms > 0),
+                area NUMERIC(10,2) NOT NULL CHECK (area > 0),
+                price NUMERIC(15,2) NOT NULL CHECK (price >= 0),
+                floor INTEGER NOT NULL CHECK (floor > 0),
+                total_floors INTEGER NOT NULL CHECK (total_floors > 0),
+                condition_code VARCHAR(50) NOT NULL CHECK (condition_code IN ('REQUIRES_REPAIR','AVERAGE','GOOD','EXCELLENT')),
+                description TEXT,
+                image_path VARCHAR(500),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );
+
+              CREATE TABLE IF NOT EXISTS estate_photo (
+                photo_id BIGSERIAL PRIMARY KEY,
+                estate_id BIGINT NOT NULL REFERENCES estate(estate_id) ON DELETE CASCADE,
+                file_path VARCHAR(500) NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );
+
+              CREATE TABLE IF NOT EXISTS evaluation (
+                evaluation_id BIGSERIAL PRIMARY KEY,
+                estate_id BIGINT NOT NULL REFERENCES estate(estate_id) ON DELETE CASCADE,
+                appraiser_id BIGINT NOT NULL REFERENCES user_account(user_account_id),
+                estimated_value NUMERIC(15,2) NOT NULL CHECK (estimated_value >= 0),
+                evaluation_method VARCHAR(100),
+                notes TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );
+
+              CREATE TABLE IF NOT EXISTS review (
+                review_id BIGSERIAL PRIMARY KEY,
+                estate_id BIGINT NOT NULL REFERENCES estate(estate_id) ON DELETE CASCADE,
+                user_account_id BIGINT NOT NULL REFERENCES user_account(user_account_id),
+                rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+                comment TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );
+
+              CREATE TABLE IF NOT EXISTS user_preference (
+                preference_id BIGSERIAL PRIMARY KEY,
+                user_account_id BIGINT NOT NULL UNIQUE REFERENCES user_account(user_account_id) ON DELETE CASCADE,
+                min_price NUMERIC(15,2),
+                max_price NUMERIC(15,2),
+                min_area NUMERIC(10,2),
+                max_area NUMERIC(10,2),
+                min_rooms INTEGER,
+                max_rooms INTEGER,
+                min_floor INTEGER,
+                max_floor INTEGER,
+                condition_code VARCHAR(50) CHECK (condition_code IN ('REQUIRES_REPAIR','AVERAGE','GOOD','EXCELLENT')),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );
+
+              CREATE TABLE IF NOT EXISTS recommendation (
+                recommendation_id BIGSERIAL PRIMARY KEY,
+                user_account_id BIGINT NOT NULL REFERENCES user_account(user_account_id) ON DELETE CASCADE,
+                estate_id BIGINT NOT NULL REFERENCES estate(estate_id) ON DELETE CASCADE,
+                score NUMERIC(5,2) NOT NULL CHECK (score >= 0 AND score <= 100),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (user_account_id, estate_id)
+              );
+
+              CREATE TABLE IF NOT EXISTS market_snapshot (
+                snapshot_id BIGSERIAL PRIMARY KEY,
+                district_id BIGINT NOT NULL REFERENCES district(district_id),
+                snapshot_month DATE NOT NULL,
+                avg_price NUMERIC(15,2),
+                demand_level INTEGER CHECK (demand_level BETWEEN 1 AND 10),
+                property_type VARCHAR(50) NOT NULL DEFAULT 'APARTMENT',
+                captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (district_id, snapshot_month, property_type)
+              );
+
+              CREATE OR REPLACE FUNCTION update_updated_at_column()
+              RETURNS TRIGGER AS $$
+              BEGIN
+                NEW.updated_at = NOW();
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              DROP TRIGGER IF EXISTS update_estate_updated_at ON estate;
+              CREATE TRIGGER update_estate_updated_at
+              BEFORE UPDATE ON estate
+              FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+              DROP TRIGGER IF EXISTS update_evaluation_updated_at ON evaluation;
+              CREATE TRIGGER update_evaluation_updated_at
+              BEFORE UPDATE ON evaluation
+              FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+              DROP TRIGGER IF EXISTS update_review_updated_at ON review;
+              CREATE TRIGGER update_review_updated_at
+              BEFORE UPDATE ON review
+              FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+              INSERT INTO role (role_name) VALUES ('ADMIN'), ('CLIENT'), ('APPRAISER')
+              ON CONFLICT (role_name) DO NOTHING;
+
+              CREATE INDEX IF NOT EXISTS idx_estate_district ON estate(district_id);
+              CREATE INDEX IF NOT EXISTS idx_estate_price ON estate(price);
+              CREATE INDEX IF NOT EXISTS idx_estate_rooms ON estate(rooms);
+              CREATE INDEX IF NOT EXISTS idx_evaluation_estate ON evaluation(estate_id);
+              CREATE INDEX IF NOT EXISTS idx_evaluation_appraiser ON evaluation(appraiser_id);
+              CREATE INDEX IF NOT EXISTS idx_review_estate ON review(estate_id);
+              CREATE INDEX IF NOT EXISTS idx_review_user ON review(user_account_id);
+              CREATE INDEX IF NOT EXISTS idx_recommendation_user_score ON recommendation(user_account_id, score DESC);
+              CREATE INDEX IF NOT EXISTS idx_recommendation_estate ON recommendation(estate_id);
+
