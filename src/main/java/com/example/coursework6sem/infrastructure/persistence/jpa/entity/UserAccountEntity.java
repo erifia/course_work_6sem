@@ -72,5 +72,13 @@ public class UserAccountEntity {
     public void setRole(RoleEntity role) {
         this.role = role;
     }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
 }
 

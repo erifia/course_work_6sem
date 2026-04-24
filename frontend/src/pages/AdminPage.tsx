@@ -24,6 +24,7 @@ export default function AdminPage() {
   const [name, setName] = useState('')
   const [avgPrice, setAvgPrice] = useState('')
   const [demandLevel, setDemandLevel] = useState('5')
+  const [editingDistrictId, setEditingDistrictId] = useState<number | null>(null)
 
   const [error, setError] = useState<string | null>(null)
   const [loadingDistricts, setLoadingDistricts] = useState(false)
@@ -86,11 +87,23 @@ export default function AdminPage() {
 
   async function createDistrict() {
     setError(null)
+    if (!name.trim()) {
+      setError('Введите название района')
+      return
+    }
+    if (!avgPrice || Number(avgPrice) <= 0) {
+      setError('Введите корректную среднюю цену района (USD)')
+      return
+    }
+    if (!demandLevel || Number(demandLevel) < 1 || Number(demandLevel) > 10) {
+      setError('Спрос должен быть от 1 до 10')
+      return
+    }
     setLoadingDistricts(true)
     try {
       await client.post('/api/districts', {
-        districtName: name,
-        avgPrice: avgPrice ? Number(avgPrice) : null,
+        districtName: name.trim(),
+        avgPrice: Number(avgPrice),
         demandLevel: Number(demandLevel),
       })
       setName('')
@@ -99,6 +112,51 @@ export default function AdminPage() {
       await loadDistricts()
     } catch (e: any) {
       setError(e?.response?.data?.error ?? 'Ошибка создания района')
+    } finally {
+      setLoadingDistricts(false)
+    }
+  }
+
+  function startEditDistrict(d: DistrictResponse) {
+    setEditingDistrictId(d.id)
+    setName(d.districtName)
+    setAvgPrice(d.avgPrice != null ? String(d.avgPrice) : '')
+    setDemandLevel(d.demandLevel != null ? String(d.demandLevel) : '5')
+  }
+
+  function cancelEditDistrict() {
+    setEditingDistrictId(null)
+    setName('')
+    setAvgPrice('')
+    setDemandLevel('5')
+  }
+
+  async function saveDistrictEdit() {
+    if (editingDistrictId == null) return
+    setError(null)
+    if (!name.trim()) {
+      setError('Введите название района')
+      return
+    }
+    if (!avgPrice || Number(avgPrice) <= 0) {
+      setError('Введите корректную среднюю цену района (USD)')
+      return
+    }
+    if (!demandLevel || Number(demandLevel) < 1 || Number(demandLevel) > 10) {
+      setError('Спрос должен быть от 1 до 10')
+      return
+    }
+    setLoadingDistricts(true)
+    try {
+      await client.put(`/api/districts/${editingDistrictId}`, {
+        districtName: name.trim(),
+        avgPrice: Number(avgPrice),
+        demandLevel: Number(demandLevel),
+      })
+      cancelEditDistrict()
+      await loadDistricts()
+    } catch (e: any) {
+      setError(e?.response?.data?.error ?? 'Ошибка обновления района')
     } finally {
       setLoadingDistricts(false)
     }
@@ -143,6 +201,20 @@ export default function AdminPage() {
   const maxDemand = useMemo(() => {
     return Math.max(...districts.map((d) => Number(d.demandLevel ?? 0)), 1)
   }, [districts])
+
+  function toDonutSegments(items: Array<{ label: string; value: number; color: string }>) {
+    const norm = items
+      .map((x) => ({ ...x, value: Math.max(0, x.value) }))
+      .filter((x) => x.value > 0)
+    const normTotal = norm.reduce((s, x) => s + x.value, 0) || 1
+    let offset = 25 // start at 12 o'clock
+    return norm.map((x) => {
+      const pct = (x.value / normTotal) * 100
+      const seg = { ...x, pct, dash: `${pct} ${100 - pct}`, offset }
+      offset -= pct
+      return seg
+    })
+  }
 
   if (role !== 'ADMIN') {
     return (
@@ -230,6 +302,9 @@ export default function AdminPage() {
             <label className="block">
               <span className="text-sm text-black/60">Средняя цена (USD)</span>
               <input
+                type="number"
+                min="1"
+                step="0.01"
                 className="mt-1 rounded-xl border border-black/20 px-3 py-2 bg-white w-full"
                 placeholder="Напр. 1500"
                 value={avgPrice}
@@ -239,6 +314,9 @@ export default function AdminPage() {
             <label className="block">
               <span className="text-sm text-black/60">Спрос (1..10)</span>
               <input
+                type="number"
+                min="1"
+                max="10"
                 className="mt-1 rounded-xl border border-black/20 px-3 py-2 bg-white w-full"
                 placeholder="5"
                 value={demandLevel}
@@ -247,19 +325,37 @@ export default function AdminPage() {
             </label>
             <button
               className="rounded-xl bg-brand-900 text-white py-2 font-semibold hover:bg-brand-900/90 disabled:opacity-50"
-              disabled={loadingDistricts || !name}
-              onClick={() => void createDistrict()}
+              disabled={loadingDistricts || !name.trim()}
+              onClick={() => void (editingDistrictId == null ? createDistrict() : saveDistrictEdit())}
             >
-              {loadingDistricts ? 'Сохраняем...' : 'Создать'}
+              {loadingDistricts ? 'Сохраняем...' : editingDistrictId == null ? 'Создать' : 'Сохранить'}
             </button>
+            {editingDistrictId != null ? (
+              <button
+                className="rounded-xl border border-black/20 bg-white py-2 font-semibold hover:bg-black/5"
+                onClick={cancelEditDistrict}
+                disabled={loadingDistricts}
+              >
+                Отмена
+              </button>
+            ) : null}
           </div>
 
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {districts.map((d) => (
               <div key={d.id} className="rounded-2xl border border-black/10 bg-white p-4">
-                <div className="font-semibold">{d.districtName}</div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-semibold">{d.districtName}</div>
+                  <button
+                    className="rounded-lg border border-black/15 px-2 py-1 text-xs hover:bg-black/5"
+                    title="Редактировать район"
+                    onClick={() => startEditDistrict(d)}
+                  >
+                    ✏️
+                  </button>
+                </div>
                 <div className="text-sm text-brand-600 mt-1">
-                  Средняя цена: {d.avgPrice ?? '—'}, спрос: {d.demandLevel ?? '—'}
+                  Средняя цена: {d.avgPrice ?? 'не задана'}, спрос: {d.demandLevel ?? 'не задан'}
                 </div>
               </div>
             ))}
@@ -358,15 +454,91 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {(() => {
+              const demandBuckets = [
+                {
+                  label: 'Низкий (1–3)',
+                  value: districts.filter((d) => Number(d.demandLevel ?? 0) >= 1 && Number(d.demandLevel ?? 0) <= 3).length,
+                  color: '#C7A87A',
+                },
+                {
+                  label: 'Средний (4–7)',
+                  value: districts.filter((d) => Number(d.demandLevel ?? 0) >= 4 && Number(d.demandLevel ?? 0) <= 7).length,
+                  color: '#88A9D8',
+                },
+                {
+                  label: 'Высокий (8–10)',
+                  value: districts.filter((d) => Number(d.demandLevel ?? 0) >= 8 && Number(d.demandLevel ?? 0) <= 10).length,
+                  color: '#143A66',
+                },
+              ]
+              const demandSeg = toDonutSegments(demandBuckets)
+
+              const prices = districts.map((d) => Number(d.avgPrice ?? 0)).filter((x) => x > 0)
+              const priceBuckets = [
+                { label: '< 1000', value: prices.filter((x) => x > 0 && x < 1000).length, color: '#E9D8BC' },
+                { label: '1000–1500', value: prices.filter((x) => x >= 1000 && x < 1500).length, color: '#C7D7EE' },
+                { label: '1500–2000', value: prices.filter((x) => x >= 1500 && x < 2000).length, color: '#88A9D8' },
+                { label: '≥ 2000', value: prices.filter((x) => x >= 2000).length, color: '#143A66' },
+              ]
+              const priceSeg = toDonutSegments(priceBuckets)
+
+              const donut = (segments: Array<{ label: string; value: number; color: string; pct: number; dash: string; offset: number }>) => (
+                <div className="flex items-center gap-5">
+                  <svg viewBox="0 0 42 42" className="h-28 w-28 shrink-0">
+                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="rgba(0,0,0,0.08)" strokeWidth="8" />
+                    {segments.map((s) => (
+                      <circle
+                        key={s.label}
+                        cx="21"
+                        cy="21"
+                        r="15.915"
+                        fill="transparent"
+                        stroke={s.color}
+                        strokeWidth="8"
+                        strokeDasharray={s.dash}
+                        strokeDashoffset={s.offset}
+                      />
+                    ))}
+                  </svg>
+                  <div className="space-y-2 text-sm">
+                    {segments.length === 0 ? <div className="text-black/60">Недостаточно данных.</div> : null}
+                    {segments.map((s) => (
+                      <div key={`legend-${s.label}`} className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                          <span className="text-black/70">{s.label}</span>
+                        </div>
+                        <div className="text-black/60">{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+
+              return (
+                <>
+                  <div className="rounded-3xl border border-black/10 bg-white/70 p-5">
+                    <h3 className="text-xl font-semibold text-center text-brand-500 mb-4">Распределение спроса (donut)</h3>
+                    {donut(demandSeg)}
+                  </div>
+                  <div className="rounded-3xl border border-black/10 bg-white/70 p-5">
+                    <h3 className="text-xl font-semibold text-center text-brand-500 mb-4">Распределение цен по м² (donut)</h3>
+                    {donut(priceSeg)}
+                  </div>
+                </>
+              )
+            })()}
+          </div>
         </div>
       ) : null}
 
       {tab === 'reports' ? (
         <div className="rounded-3xl border border-black/10 bg-brand-100 p-5">
           <h2 className="text-2xl font-semibold">Отчёты</h2>
-          <p className="text-sm text-brand-600 mt-2">
-            Скачивай админский и персональный отчёты в PDF. Стиль сделан лёгким, с бежевым акцентом.
-          </p>
+
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               className="rounded-xl bg-brand-900 text-white px-4 py-2 font-semibold hover:bg-brand-900/90 disabled:opacity-50"

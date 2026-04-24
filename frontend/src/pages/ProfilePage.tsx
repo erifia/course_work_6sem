@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import client from '../api/client'
 import { useAuthStore } from '../store/authStore'
-import RecommendationsPage from './RecommendationsPage'
-import type { DistrictResponse, EstateResponse } from '../types'
+import type { EstateResponse } from '../types'
 
 type Profile = {
   userAccountId: number
@@ -12,55 +11,20 @@ type Profile = {
   createdAt: string
 }
 
-type Evaluation = {
-  id: number
-  estateId: number
-  address: string
-  appraiserId: number
-  appraiserName: string | null
-  estimatedValue: number
-  evaluationMethod: string | null
-  notes: string | null
-  createdAt: string
-}
-
-type Page<T> = {
-  content: T[]
-  totalElements?: number
-  totalPages: number
-  number: number
-  size: number
-}
-
-type TabId = 'profile' | 'allEstates' | 'manualEvaluation' | 'recommendations' | 'evaluations' | 'report'
+type TabId = 'profile' | 'allEstates' | 'report'
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1560185007-cde436f6a4d0?auto=format&fit=crop&w=1200&q=80'
 
 export default function ProfilePage() {
   const authUser = useAuthStore((s) => s.user)
-  const authRole = useAuthStore((s) => s.role)
 
   const [activeTab, setActiveTab] = useState<TabId>('profile')
   const [profile, setProfile] = useState<Profile | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const [evalPage, setEvalPage] = useState<Page<Evaluation> | null>(null)
-  const [loadingEvals, setLoadingEvals] = useState(false)
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [profileForm, setProfileForm] = useState({ username: '', email: '' })
 
   const [downloadingPdf, setDownloadingPdf] = useState(false)
-  const [districts, setDistricts] = useState<DistrictResponse[]>([])
   const [allEstates, setAllEstates] = useState<EstateResponse[]>([])
-  const [manualResult, setManualResult] = useState<any>(null)
-  const [manualLoading, setManualLoading] = useState(false)
-  const [form, setForm] = useState({
-    districtId: '',
-    address: '',
-    area: '',
-    rooms: '1',
-    floor: '1',
-    totalFloors: '1',
-    condition: 'среднее',
-    description: '',
-  })
 
   useEffect(() => {
     setError(null)
@@ -68,8 +32,7 @@ export default function ProfilePage() {
       try {
         const resp = await client.get<Profile>('/api/auth/profile')
         setProfile(resp.data)
-        const d = await client.get<DistrictResponse[]>('/api/districts')
-        setDistricts(d.data)
+        setProfileForm({ username: resp.data.username, email: resp.data.email })
       } catch (e: any) {
         setError(e?.response?.data?.error ?? 'Ошибка загрузки профиля')
       }
@@ -77,28 +40,6 @@ export default function ProfilePage() {
   }, [])
 
   const myId = useMemo(() => profile?.userAccountId ?? authUser?.userAccountId ?? null, [profile, authUser])
-
-  useEffect(() => {
-    if (activeTab !== 'evaluations') return
-    if (!myId) return
-
-    setLoadingEvals(true)
-    setEvalPage(null)
-    setError(null)
-
-    ;(async () => {
-      try {
-        const resp = await client.get<Page<Evaluation>>('/api/evaluations', {
-          params: { appraiserId: myId, page: 0, size: 20 },
-        })
-        setEvalPage(resp.data)
-      } catch (e: any) {
-        setError(e?.response?.data?.error ?? 'Ошибка загрузки оценок')
-      } finally {
-        setLoadingEvals(false)
-      }
-    })()
-  }, [activeTab, myId])
 
   useEffect(() => {
     if (activeTab !== 'allEstates') return
@@ -125,29 +66,6 @@ export default function ProfilePage() {
       setError(e?.response?.data?.error ?? 'Ошибка скачивания PDF')
     } finally {
       setDownloadingPdf(false)
-    }
-  }
-
-  async function submitManualEvaluation() {
-    setError(null)
-    setManualLoading(true)
-    setManualResult(null)
-    try {
-      const resp = await client.post('/api/evaluations/manual', {
-        districtId: Number(form.districtId),
-        address: form.address,
-        area: Number(form.area),
-        rooms: Number(form.rooms),
-        floor: Number(form.floor),
-        totalFloors: Number(form.totalFloors),
-        condition: form.condition,
-        description: form.description || null,
-      })
-      setManualResult(resp.data.data)
-    } catch (e: any) {
-      setError(e?.response?.data?.error ?? 'Ошибка расчета оценки')
-    } finally {
-      setManualLoading(false)
     }
   }
 
@@ -193,24 +111,6 @@ export default function ProfilePage() {
             Все квартиры
           </button>
           <button
-            className={`rounded border px-3 py-2 text-sm hover:bg-black/5 ${activeTab === 'manualEvaluation' ? 'border-brand-600 bg-brand-600/10 font-semibold' : 'border-black/15'}`}
-            onClick={() => setActiveTab('manualEvaluation')}
-          >
-            Оценить квартиру
-          </button>
-          <button
-            className={`rounded border px-3 py-2 text-sm hover:bg-black/5 ${activeTab === 'recommendations' ? 'border-brand-600 bg-brand-600/10 font-semibold' : 'border-black/15'}`}
-            onClick={() => setActiveTab('recommendations')}
-          >
-            Подбор/Предпочтения
-          </button>
-          <button
-            className={`rounded border px-3 py-2 text-sm hover:bg-black/5 ${activeTab === 'evaluations' ? 'border-brand-600 bg-brand-600/10 font-semibold' : 'border-black/15'}`}
-            onClick={() => setActiveTab('evaluations')}
-          >
-            Мои оценки
-          </button>
-          <button
             className={`rounded border px-3 py-2 text-sm hover:bg-black/5 ${activeTab === 'report' ? 'border-brand-600 bg-brand-600/10 font-semibold' : 'border-black/15'}`}
             onClick={() => setActiveTab('report')}
           >
@@ -237,12 +137,55 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+
+          <div className="mt-4 rounded-xl border border-black/10 bg-white p-4">
+            <div className="font-semibold mb-3">Редактирование данных</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-sm text-black/60">Логин</span>
+                <input
+                  className="mt-1 w-full rounded border border-black/20 px-3 py-2 bg-white"
+                  value={profileForm.username}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, username: e.target.value }))}
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm text-black/60">Email</span>
+                <input
+                  className="mt-1 w-full rounded border border-black/20 px-3 py-2 bg-white"
+                  value={profileForm.email}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="mt-3">
+              <button
+                className="rounded bg-brand-900 text-white px-4 py-2 text-sm font-semibold hover:bg-brand-900/90 disabled:opacity-50"
+                disabled={savingProfile}
+                onClick={async () => {
+                  setError(null)
+                  setSavingProfile(true)
+                  try {
+                    const resp = await client.put('/api/auth/profile', {
+                      username: profileForm.username.trim(),
+                      email: profileForm.email.trim(),
+                    })
+                    setProfile(resp.data)
+                  } catch (e: any) {
+                    setError(e?.response?.data?.error ?? 'Ошибка обновления профиля')
+                  } finally {
+                    setSavingProfile(false)
+                  }
+                }}
+              >
+                {savingProfile ? 'Сохраняем...' : 'Сохранить изменения'}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
-      {activeTab === 'recommendations' ? (
-        <RecommendationsPage />
-      ) : null}
+      {/* Подбор/оценка/мои оценки вынесены на отдельные страницы */}
 
       {activeTab === 'allEstates' ? (
         <div className="rounded-xl border border-black/10 bg-white/80 p-4">
@@ -265,121 +208,7 @@ export default function ProfilePage() {
         </div>
       ) : null}
 
-      {activeTab === 'manualEvaluation' ? (
-        <div className="rounded-xl border border-black/10 bg-white/80 p-4 space-y-3">
-          <h2 className="text-lg font-semibold">Оценка своей квартиры</h2>
-          <p className="text-sm text-black/60">
-            Система берет среднюю цену за м² по району и применяет коэффициенты по ремонту и этажу. Результат сохраняется и виден админу.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-sm text-black/60">Район</span>
-              <select className="mt-1 w-full rounded border border-black/20 px-3 py-2 bg-white" value={form.districtId} onChange={(e) => setForm((p) => ({ ...p, districtId: e.target.value }))}>
-                <option value="">Выберите район</option>
-                {districts.map((d) => <option key={d.id} value={d.id}>{d.districtName}</option>)}
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-sm text-black/60">Адрес</span>
-              <input className="mt-1 w-full rounded border border-black/20 px-3 py-2" value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
-            </label>
-            <label className="block">
-              <span className="text-sm text-black/60">Площадь, м²</span>
-              <input className="mt-1 w-full rounded border border-black/20 px-3 py-2" value={form.area} onChange={(e) => setForm((p) => ({ ...p, area: e.target.value }))} />
-            </label>
-            <label className="block">
-              <span className="text-sm text-black/60">Комнат</span>
-              <select className="mt-1 w-full rounded border border-black/20 px-3 py-2 bg-white" value={form.rooms} onChange={(e) => setForm((p) => ({ ...p, rooms: e.target.value }))}>
-                {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-sm text-black/60">Этаж</span>
-              <input className="mt-1 w-full rounded border border-black/20 px-3 py-2" value={form.floor} onChange={(e) => setForm((p) => ({ ...p, floor: e.target.value }))} />
-            </label>
-            <label className="block">
-              <span className="text-sm text-black/60">Этажность дома</span>
-              <input className="mt-1 w-full rounded border border-black/20 px-3 py-2" value={form.totalFloors} onChange={(e) => setForm((p) => ({ ...p, totalFloors: e.target.value }))} />
-            </label>
-            <label className="block">
-              <span className="text-sm text-black/60">Состояние ремонта</span>
-              <select className="mt-1 w-full rounded border border-black/20 px-3 py-2 bg-white" value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value }))}>
-                <option value="требует ремонта">требует ремонта</option>
-                <option value="среднее">среднее</option>
-                <option value="хорошее">хорошее</option>
-                <option value="отличное">отличное</option>
-              </select>
-            </label>
-            <label className="block md:col-span-2">
-              <span className="text-sm text-black/60">Комментарий (опционально)</span>
-              <input className="mt-1 w-full rounded border border-black/20 px-3 py-2" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
-            </label>
-          </div>
-          <button
-            className="rounded bg-brand-900 text-white py-2 px-4 font-semibold hover:bg-brand-900/90 disabled:opacity-50"
-            onClick={() => void submitManualEvaluation()}
-            disabled={manualLoading || !form.districtId || !form.address || !form.area}
-          >
-            {manualLoading ? 'Считаем...' : 'Рассчитать и сохранить'}
-          </button>
-          {manualResult ? (
-            <div className="rounded-lg border border-black/10 bg-white p-3 text-sm">
-              <div><span className="text-black/60">Предварительная стоимость:</span> <span className="font-semibold">{new Intl.NumberFormat('ru-RU').format(manualResult.valuation.estimatedValue)} USD</span></div>
-              <div className="mt-1 text-black/60">Сохраненная оценка ID: {manualResult.evaluation.id}</div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {activeTab === 'evaluations' ? (
-        <div className="rounded-xl border border-black/10 bg-white/80 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">Мои оценки</h2>
-            <button
-              className="rounded border border-black/15 px-3 py-2 text-sm hover:bg-black/5"
-              disabled={loadingEvals}
-              onClick={() => {
-                // re-trigger load by toggling state
-                setEvalPage(null)
-                setLoadingEvals(true)
-                client
-                  .get<Page<Evaluation>>('/api/evaluations', { params: { appraiserId: myId, page: 0, size: 20 } })
-                  .then((r) => setEvalPage(r.data))
-                  .catch((e: any) => setError(e?.response?.data?.error ?? 'Ошибка загрузки оценок'))
-                  .finally(() => setLoadingEvals(false))
-              }}
-            >
-              {loadingEvals ? 'Загрузка...' : 'Обновить'}
-            </button>
-          </div>
-
-          {authRole !== 'APPRAISER' && authRole !== 'ADMIN' ? (
-            <div className="text-sm text-black/60 mb-3">
-              Для покупателя оценки не формируются, поэтому список может быть пуст.
-            </div>
-          ) : null}
-
-          {loadingEvals ? <div className="text-sm text-black/60">Загрузка...</div> : null}
-          {evalPage?.content?.length === 0 && !loadingEvals ? (
-            <div className="text-sm text-black/60">Пока нет оценок.</div>
-          ) : null}
-
-          <div className="space-y-2">
-            {evalPage?.content?.map((e) => (
-              <div key={e.id} className="rounded-lg border border-black/10 bg-white p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-semibold">Оценка #{e.id}</div>
-                  <div className="text-sm font-semibold">{new Intl.NumberFormat('ru-RU').format(e.estimatedValue)} $</div>
-                </div>
-                <div className="text-sm text-black/60 mt-1">
-                  Объект: {e.address} / метод: {e.evaluationMethod ?? '—'}
-                </div>
-                {e.notes ? <div className="text-sm mt-2">{e.notes}</div> : null}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {/* Убрано из кабинета: оценка/подбор/мои оценки */}
 
       {activeTab === 'report' ? (
         <div className="rounded-xl border border-black/10 bg-white/80 p-4 space-y-3">

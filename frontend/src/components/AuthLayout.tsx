@@ -9,33 +9,18 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <NavLink to="/" className="font-semibold text-brand-900">
             Оценка недвижимости
           </NavLink>
-          <div className="text-sm text-brand-600">Вход в систему</div>
+          <div className="text-sm text-brand-600">Secure access</div>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
           <div className="hidden lg:block">
-            <div className="rounded-3xl border border-black/10 bg-white/70 backdrop-blur p-8">
-              <div className="text-sm text-black/60">Курсовой проект</div>
-              <h1 className="text-3xl font-semibold mt-2 leading-tight">
-                Оценка и подбор объектов недвижимости
-              </h1>
-              <p className="text-black/60 mt-4">
-                Поиск, фильтры, оценки, отзывы, рекомендации - в одном приложении.
-              </p>
-              <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-2xl border border-black/10 bg-white p-4">
-                  <div className="font-semibold">Покупатель</div>
-                  <div className="text-black/60 mt-1">Подбор и отзывы</div>
-                </div>
-                <div className="rounded-2xl border border-black/10 bg-white p-4">
-                  <div className="font-semibold">Оценщик</div>
-                  <div className="text-black/60 mt-1">Оценки и отчёты</div>
-                </div>
-              </div>
+            <div className="rounded-3xl border border-black/10 bg-white/75 backdrop-blur p-8 shadow-[0_25px_70px_rgba(10,31,68,0.10)]">
+              <h1 className="text-3xl font-semibold leading-tight">Платформа оценки недвижимости</h1>
+              <p className="text-black/60 mt-4">Оценка стоимости, подбор объектов и аналитика в едином интерфейсе.</p>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-black/10 bg-white/70 backdrop-blur p-6 shadow-[0_30px_80px_rgba(10,31,68,0.10)]">
+          <div className="rounded-3xl border border-black/10 bg-white/80 backdrop-blur p-6 shadow-[0_30px_80px_rgba(10,31,68,0.12)]">
             {children}
           </div>
         </div>

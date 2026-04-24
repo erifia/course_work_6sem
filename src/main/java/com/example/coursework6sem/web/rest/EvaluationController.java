@@ -67,9 +67,33 @@ public class EvaluationController {
     public ResponseEntity<?> manual(@RequestBody @Valid EvaluationRequests.ManualCreateRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-                    "message", "Оценка сохранена",
+                    "message", "Оценка рассчитана и сохранена",
                     "data", manualEvaluationService.evaluateAndSave(request)
             ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/manual")
+    public ResponseEntity<?> listManual(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        try {
+            Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+            return ResponseEntity.ok(manualEvaluationService.list(pageable));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/manual/{id}")
+    public ResponseEntity<?> getManual(@PathVariable("id") Long id) {
+        try {
+            return ResponseEntity.ok(Map.of("data", manualEvaluationService.getById(id)));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {

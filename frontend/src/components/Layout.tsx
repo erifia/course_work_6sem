@@ -45,14 +45,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   Подбор
                 </NavLink>
                 <NavLink
-                  to="/search"
-                  className={({ isActive }) =>
-                    isActive ? 'text-brand-900 font-semibold' : 'text-brand-600 hover:text-brand-900'
-                  }
-                >
-                  Поиск
-                </NavLink>
-                <NavLink
                   to="/evaluations"
                   className={({ isActive }) =>
                     isActive ? 'text-brand-900 font-semibold' : 'text-brand-600 hover:text-brand-900'
@@ -78,7 +70,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 >
                   Кабинет
                 </NavLink>
-                {role ? <span className="text-brand-600/80">({role})</span> : null}
                 <button
                   className="text-brand-600 hover:text-brand-900"
                   onClick={() => {

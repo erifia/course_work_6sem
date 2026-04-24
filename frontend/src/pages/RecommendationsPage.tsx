@@ -13,6 +13,7 @@ export default function RecommendationsPage() {
   const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>(['USD'])
   const [priceCurrency, setPriceCurrency] = useState('USD')
   const [priceRate, setPriceRate] = useState<number>(1)
+  const [loading, setLoading] = useState(false)
 
   const conditionOptions = useMemo(
     () => ['требует ремонта', 'среднее', 'хорошее', 'отличное'],
@@ -65,6 +66,34 @@ export default function RecommendationsPage() {
     }
   }
 
+  async function matchAndSave() {
+    setLoading(true)
+    try {
+      await savePref()
+      localStorage.setItem('recommendations:selectedDistricts', JSON.stringify(selectedDistricts))
+      await generate()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function restoreSaved() {
+    setLoading(true)
+    try {
+      const p = await client.get('/api/recommendations/preferences')
+      setPref(p.data.data)
+      const raw = localStorage.getItem('recommendations:selectedDistricts')
+      if (raw) {
+        const ids = JSON.parse(raw)
+        if (Array.isArray(ids)) setSelectedDistricts(ids.map((x) => Number(x)).filter((x) => !Number.isNaN(x)))
+      }
+    } catch (e: any) {
+      setError(e?.response?.data?.error ?? 'Ошибка восстановления предпочтений')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function updatePref<K extends keyof UserPreferenceResponse>(key: K, value: UserPreferenceResponse[K]) {
     setPref((p) => {
       const base: UserPreferenceResponse = p ?? {
@@ -111,13 +140,18 @@ export default function RecommendationsPage() {
     condition: null,
   }
 
+  const exactMatches = (recs ?? []).filter((r) => Number(r.score) >= 8)
+  const maybeLike = (recs ?? []).filter((r) => Number(r.score) < 8)
+  const fallbackImage =
+    'https://images.unsplash.com/photo-1560185007-cde436f6a4d0?auto=format&fit=crop&w=1200&q=80'
+
   return (
     <div className="space-y-4">
       {error ? <div className="text-red-600 text-sm">{error}</div> : null}
 
       <div className="rounded-xl border border-black/10 bg-white/80 p-4">
-        <h2 className="text-xl font-semibold mb-1">Предпочтения для подбора</h2>
-        <p className="text-xs text-black/50 mb-3">Все цены указываются в долларах США (USD).</p>
+        <h2 className="text-xl font-semibold mb-1">Подбор квартир</h2>
+        <p className="text-xs text-black/50 mb-3">Заполните пожелания, затем нажмите «Подобрать и сохранить предпочтения».</p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <label className="block">
@@ -166,12 +200,30 @@ export default function RecommendationsPage() {
             />
           </label>
           <label className="block">
+            <span className="text-sm text-black/60">Макс. комнат</span>
+            <input
+              className="w-full mt-1 rounded border border-black/20 px-3 py-2 outline-none bg-white"
+              value={prefForm.maxRooms ?? ''}
+              onChange={(e) => updatePref('maxRooms', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="4"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm text-black/60">Мин. этаж</span>
+            <input
+              className="w-full mt-1 rounded border border-black/20 px-3 py-2 outline-none bg-white"
+              value={prefForm.minFloor ?? ''}
+              onChange={(e) => updatePref('minFloor', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="1"
+            />
+          </label>
+          <label className="block">
             <span className="text-sm text-black/60">Макс. этаж</span>
             <input
               className="w-full mt-1 rounded border border-black/20 px-3 py-2 outline-none bg-white"
               value={prefForm.maxFloor ?? ''}
               onChange={(e) => updatePref('maxFloor', e.target.value === '' ? null : Number(e.target.value))}
-              placeholder="5"
+              placeholder="12"
             />
           </label>
 
@@ -190,33 +242,10 @@ export default function RecommendationsPage() {
               ))}
             </select>
           </label>
-        </div>
 
-        <div className="mt-3">
-          <button
-            onClick={() => void savePref()}
-            className="rounded bg-brand-900 text-white py-2 px-4 font-semibold hover:bg-brand-900/90"
-          >
-            Сохранить
-          </button>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-black/10 bg-white/80 p-4">
-        <h2 className="text-xl font-semibold mb-3">Сгенерировать умный подбор</h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <label className="block">
-            <span className="text-sm text-black/60">Лимит</span>
-            <input
-              className="w-full mt-1 rounded border border-black/20 px-3 py-2 outline-none bg-white"
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-            />
-          </label>
-          <div className="md:col-span-2">
-            <span className="text-sm text-black/60">Районы (для бонуса)</span>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="md:col-span-3">
+            <span className="text-sm text-black/60">Предпочтительные районы</span>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
               {districts.map((d) => {
                 const checked = selectedDistricts.includes(d.id)
                 return (
@@ -236,19 +265,15 @@ export default function RecommendationsPage() {
               })}
             </div>
           </div>
-        </div>
 
-        <button
-          className="mt-4 rounded bg-brand-900 text-white py-2 px-4 font-semibold hover:bg-brand-900/90"
-          onClick={() => void generate()}
-        >
-          Подобрать
-        </button>
-      </div>
-
-      <div className="rounded-xl border border-black/10 bg-white/80 p-4">
-        <h2 className="text-xl font-semibold mb-3">Рекомендации</h2>
-        <div className="mb-3 max-w-xs">
+          <label className="block">
+            <span className="text-sm text-black/60">Лимит вариантов</span>
+            <input
+              className="w-full mt-1 rounded border border-black/20 px-3 py-2 outline-none bg-white"
+              value={limit}
+              onChange={(e) => setLimit(Number(e.target.value))}
+            />
+          </label>
           <label className="block">
             <span className="text-sm text-black/60">Показывать цены в валюте</span>
             <select className="w-full mt-1 rounded border border-black/20 px-3 py-2 bg-white" value={priceCurrency} onChange={(e) => void changePriceCurrency(e.target.value)}>
@@ -257,33 +282,112 @@ export default function RecommendationsPage() {
               ))}
             </select>
           </label>
+          <div className="md:col-span-3 flex flex-wrap gap-2">
+            <button
+              onClick={() => void matchAndSave()}
+              className="rounded bg-brand-900 text-white py-2 px-4 font-semibold hover:bg-brand-900/90 disabled:opacity-50"
+              disabled={loading}
+            >
+              {loading ? 'Выполняем...' : 'Подобрать и сохранить предпочтения'}
+            </button>
+            <button
+              onClick={() => void restoreSaved()}
+              className="rounded border border-black/20 bg-white py-2 px-4 font-semibold hover:bg-black/5 disabled:opacity-50"
+              disabled={loading}
+            >
+              Восстановить сохраненные предпочтения
+            </button>
+          </div>
         </div>
-        {!recs ? <div className="text-sm text-black/60">Нажмите «Подобрать».</div> : null}
-        {recs?.length ? (
-          <div className="space-y-3">
-            {recs.map((r) => (
-              <div key={r.recommendationId ?? `${r.estateId}-${r.score}`} className="border border-black/10 rounded-lg p-3 bg-white">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold">{r.address}</div>
-                    <div className="text-sm text-black/60 mt-1">
-                      {r.districtName} / {r.rooms} комн / {r.area} м2
+      </div>
+
+      <div className="rounded-xl border border-black/10 bg-white/80 p-4">
+        <h2 className="text-xl font-semibold mb-3">Результаты подбора</h2>
+        {!recs ? <div className="text-sm text-black/60">Заполните форму и нажмите кнопку подбора.</div> : null}
+
+        {recs ? (
+          <div className="space-y-5">
+            <div>
+              <h3 className="font-semibold mb-2">Подходят под требования (включая частичное совпадение)</h3>
+              {exactMatches.length === 0 ? (
+                <div className="text-sm text-black/60">По заданным параметрам точных совпадений нет.</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {exactMatches.map((r) => (
+                    <div
+                      key={`exact-${r.recommendationId ?? r.estateId}`}
+                      className="rounded-2xl border border-black/10 bg-white p-3 transition hover:shadow-lg hover:-translate-y-0.5"
+                    >
+                      <div className="h-36 rounded-xl overflow-hidden bg-black/5 mb-3">
+                        <img
+                          src={r.imagePath || fallbackImage}
+                          alt={r.address}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{r.address}</div>
+                          <div className="text-sm text-black/60 mt-1">
+                            {r.districtName} / {r.rooms} комн / {r.area} м²
+                          </div>
+                          <div className="text-sm text-black/60 mt-1">
+                            Этаж: {r.floor}/{r.totalFloors} / {r.condition}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold">
+                            {new Intl.NumberFormat('ru-RU').format(Math.round(r.price * priceRate))} {priceCurrency}
+                          </div>
+                          <div className="text-sm text-black/60">Баллы: {r.score}/12</div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-sm text-black/60 mt-1">
-                      Этаж: {r.floor}/{r.totalFloors} / {r.condition}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold">
-                      {new Intl.NumberFormat('ru-RU').format(Math.round(r.price * priceRate))} {priceCurrency}
-                    </div>
-                    <div className="text-sm text-black/60">
-                      Счёт: {r.score}/{12} ({r.scorePercent}%)
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              </div>
-            ))}
+              )}
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-2">Также могут понравиться</h3>
+              {maybeLike.length === 0 ? (
+                <div className="text-sm text-black/60">Дополнительных вариантов нет.</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {maybeLike.map((r) => (
+                    <div
+                      key={`soft-${r.recommendationId ?? r.estateId}`}
+                      className="rounded-2xl border border-black/10 bg-white p-3 transition hover:shadow-lg hover:-translate-y-0.5"
+                    >
+                      <div className="h-36 rounded-xl overflow-hidden bg-black/5 mb-3">
+                        <img
+                          src={r.imagePath || fallbackImage}
+                          alt={r.address}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{r.address}</div>
+                          <div className="text-sm text-black/60 mt-1">
+                            {r.districtName} / {r.rooms} комн / {r.area} м²
+                          </div>
+                          <div className="text-sm text-black/60 mt-1">
+                            Этаж: {r.floor}/{r.totalFloors} / {r.condition}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold">
+                            {new Intl.NumberFormat('ru-RU').format(Math.round(r.price * priceRate))} {priceCurrency}
+                          </div>
+                          <div className="text-sm text-black/60">Баллы: {r.score}/12</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
       </div>

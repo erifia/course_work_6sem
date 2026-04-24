@@ -6,6 +6,7 @@ import com.example.coursework6sem.application.service.auth.RegistrationService;
 import com.example.coursework6sem.application.service.auth.TokenRefreshService;
 import com.example.coursework6sem.web.dto.auth.AuthRequests;
 import com.example.coursework6sem.web.dto.auth.AuthResponses;
+import com.example.coursework6sem.web.dto.auth.ProfileRequests;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -68,6 +69,17 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PutMapping("/profile")
+    public ResponseEntity<?> updateProfile(@RequestBody @Valid ProfileRequests.UpdateProfileRequest request) {
+        try {
+            return ResponseEntity.ok(profileService.update(request));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 }

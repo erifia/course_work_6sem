@@ -33,6 +33,14 @@ public class EstateCreatedObserver {
             if (district.getAvgPrice() == null) return;
 
             LocalDate month = LocalDate.now().withDayOfMonth(1);
+            boolean exists = snapshots.existsByDistrict_IdAndSnapshotMonthAndPropertyType(
+                    district.getId(),
+                    month,
+                    estate.getPropertyType()
+            );
+            if (exists) {
+                return;
+            }
             MarketSnapshotEntity snapshot = new MarketSnapshotEntity(
                     district,
                     month,
@@ -42,13 +50,8 @@ public class EstateCreatedObserver {
                     Instant.now()
             );
 
-            try {
-                snapshots.save(snapshot);
-                log.info("MarketSnapshot обновлён для района {} на тип {}", district.getName(), estate.getPropertyType());
-            } catch (Exception e) {
-                // Если уникальность по (district, month, type) нарушена — просто игнорируем (создаём один снапшот).
-                log.debug("MarketSnapshot уже существовал, игнорируем: {}", e.getMessage());
-            }
+            snapshots.save(snapshot);
+            log.info("MarketSnapshot обновлён для района {} на тип {}", district.getName(), estate.getPropertyType());
         });
     }
 }

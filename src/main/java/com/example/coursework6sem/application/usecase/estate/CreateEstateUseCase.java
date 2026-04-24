@@ -54,6 +54,9 @@ public class CreateEstateUseCase {
 
         ConditionCode conditionCode = ConditionCodeMapper.fromRussianLabel(request.condition())
                 .orElseThrow(() -> new IllegalArgumentException("Некорректное состояние"));
+        if (request.totalFloors() < request.floor()) {
+            throw new IllegalArgumentException("Этаж не может быть больше этажности дома");
+        }
 
         Instant now = Instant.now();
 

@@ -155,3 +155,33 @@ databaseChangeLog:
               CREATE INDEX IF NOT EXISTS idx_recommendation_user_score ON recommendation(user_account_id, score DESC);
               CREATE INDEX IF NOT EXISTS idx_recommendation_estate ON recommendation(estate_id);
 
+  - changeSet:
+      id: 002-add-manual-evaluation-table
+      author: course-work
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE TABLE IF NOT EXISTS manual_evaluation (
+                manual_evaluation_id BIGSERIAL PRIMARY KEY,
+                district_id BIGINT NOT NULL REFERENCES district(district_id),
+                appraiser_id BIGINT NOT NULL REFERENCES user_account(user_account_id),
+                address VARCHAR(255) NOT NULL,
+                rooms INTEGER NOT NULL CHECK (rooms > 0),
+                area NUMERIC(10,2) NOT NULL CHECK (area > 0),
+                floor INTEGER NOT NULL CHECK (floor > 0),
+                total_floors INTEGER NOT NULL CHECK (total_floors > 0),
+                condition_code VARCHAR(50) NOT NULL CHECK (condition_code IN ('REQUIRES_REPAIR','AVERAGE','GOOD','EXCELLENT')),
+                description TEXT,
+                estimated_value NUMERIC(15,2) NOT NULL CHECK (estimated_value >= 0),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );
+
+              DROP TRIGGER IF EXISTS update_manual_evaluation_updated_at ON manual_evaluation;
+              CREATE TRIGGER update_manual_evaluation_updated_at
+              BEFORE UPDATE ON manual_evaluation
+              FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+              CREATE INDEX IF NOT EXISTS idx_manual_evaluation_appraiser ON manual_evaluation(appraiser_id);

@@ -5,7 +5,6 @@ import type {
   EstateComparisonData,
   EstatePredictionData,
   EstateResponse,
-  EstateValuationData,
   PageResponse,
   ReviewResponse,
 } from '../types'
@@ -57,8 +56,6 @@ export default function EstatesPage() {
   const [minRooms, setMinRooms] = useState('')
   const [condition, setCondition] = useState<string>('')
 
-  const [valuationLoadingFor, setValuationLoadingFor] = useState<number | null>(null)
-  const [valuation, setValuation] = useState<Record<number, EstateValuationData>>({})
   const [predictionLoadingFor, setPredictionLoadingFor] = useState<number | null>(null)
   const [prediction, setPrediction] = useState<Record<number, EstatePredictionData>>({})
 
@@ -126,20 +123,6 @@ export default function EstatesPage() {
     await loadEstates()
   }
 
-  async function calculate(estateId: number) {
-    setValuationLoadingFor(estateId)
-    try {
-      const resp = await client.get(`/api/real-estate/${estateId}/calculate`, {
-        params: { method: 'AUTO' },
-      })
-      setValuation((prev) => ({ ...prev, [estateId]: resp.data.data }))
-    } catch (e: any) {
-      setError(e?.response?.data?.error ?? 'Ошибка расчёта')
-    } finally {
-      setValuationLoadingFor(null)
-    }
-  }
-
   async function predict(estateId: number) {
     setPredictionLoadingFor(estateId)
     try {
@@ -178,16 +161,50 @@ export default function EstatesPage() {
 
   async function submitEstateForm(event: FormEvent) {
     event.preventDefault()
+    setError(null)
+    const rooms = Number(estateForm.rooms)
+    const area = Number(estateForm.area)
+    const price = Number(estateForm.price)
+    const floor = Number(estateForm.floor)
+    const totalFloors = Number(estateForm.totalFloors)
+    if (!estateForm.address.trim()) {
+      setError('Введите адрес')
+      return
+    }
+    if (!estateForm.districtId) {
+      setError('Выберите район')
+      return
+    }
+    if (!Number.isFinite(rooms) || rooms < 1) {
+      setError('Количество комнат должно быть больше 0')
+      return
+    }
+    if (!Number.isFinite(area) || area <= 0) {
+      setError('Площадь должна быть больше 0')
+      return
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setError('Цена должна быть числом 0 или больше')
+      return
+    }
+    if (!Number.isFinite(floor) || floor < 1 || !Number.isFinite(totalFloors) || totalFloors < 1) {
+      setError('Этаж и этажность должны быть целыми числами >= 1')
+      return
+    }
+    if (floor > totalFloors) {
+      setError('Этаж не может быть больше этажности дома')
+      return
+    }
     setFormLoading(true)
     try {
       const payload = {
         address: estateForm.address.trim(),
         districtId: Number(estateForm.districtId),
-        rooms: Number(estateForm.rooms),
-        area: Number(estateForm.area),
-        price: Number(estateForm.price),
-        floor: Number(estateForm.floor),
-        totalFloors: Number(estateForm.totalFloors),
+        rooms,
+        area,
+        price,
+        floor,
+        totalFloors,
         condition: estateForm.condition.trim(),
         description: estateForm.description.trim() || null,
         propertyType: estateForm.propertyType.trim() || 'APARTMENT',
@@ -410,13 +427,6 @@ export default function EstatesPage() {
               <div className="mt-3 flex gap-2">
                 <button
                   className="rounded border border-black/15 px-3 py-2 text-sm hover:bg-black/5"
-                  onClick={() => void calculate(e.id)}
-                  disabled={valuationLoadingFor === e.id}
-                >
-                  {valuationLoadingFor === e.id ? 'Считаем...' : 'Рассчитать'}
-                </button>
-                <button
-                  className="rounded border border-black/15 px-3 py-2 text-sm hover:bg-black/5"
                   onClick={() => void openReviews(e.id)}
                 >
                   Отзывы
@@ -429,15 +439,6 @@ export default function EstatesPage() {
                   {predictionLoadingFor === e.id ? 'Прогноз...' : 'Прогноз'}
                 </button>
               </div>
-
-              {valuation[e.id] ? (
-                <div className="mt-3 text-sm">
-                  <span className="text-black/60">Оценка:</span>{' '}
-                  <span className="font-semibold">
-                    {new Intl.NumberFormat('ru-RU').format(valuation[e.id].estimatedValue)} $
-                  </span>
-                </div>
-              ) : null}
 
               {prediction[e.id] ? (
                 <div className="mt-2 text-xs text-black/60">
@@ -655,6 +656,9 @@ export default function EstatesPage() {
               <label className="block">
                 <span className="text-sm text-black/60">Комнат</span>
                 <input
+                  type="number"
+                  min="1"
+                  step="1"
                   className="mt-1 rounded border border-black/20 px-3 py-2 w-full"
                   placeholder="Напр. 2"
                   value={estateForm.rooms}
@@ -665,6 +669,9 @@ export default function EstatesPage() {
               <label className="block">
                 <span className="text-sm text-black/60">Площадь, м²</span>
                 <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
                   className="mt-1 rounded border border-black/20 px-3 py-2 w-full"
                   placeholder="Напр. 55"
                   value={estateForm.area}
@@ -675,6 +682,9 @@ export default function EstatesPage() {
               <label className="block">
                 <span className="text-sm text-black/60">Цена, USD</span>
                 <input
+                  type="number"
+                  min="0"
+                  step="0.01"
                   className="mt-1 rounded border border-black/20 px-3 py-2 w-full"
                   placeholder="Напр. 120000"
                   value={estateForm.price}
@@ -685,6 +695,9 @@ export default function EstatesPage() {
               <label className="block">
                 <span className="text-sm text-black/60">Этаж</span>
                 <input
+                  type="number"
+                  min="1"
+                  step="1"
                   className="mt-1 rounded border border-black/20 px-3 py-2 w-full"
                   placeholder="Напр. 3"
                   value={estateForm.floor}
@@ -695,6 +708,9 @@ export default function EstatesPage() {
               <label className="block">
                 <span className="text-sm text-black/60">Всего этажей в доме</span>
                 <input
+                  type="number"
+                  min="1"
+                  step="1"
                   className="mt-1 rounded border border-black/20 px-3 py-2 w-full"
                   placeholder="Напр. 9"
                   value={estateForm.totalFloors}
