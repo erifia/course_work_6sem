@@ -1,0 +1,22 @@
+spring:
+  liquibase:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        default_schema: public
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_OAUTH_CLIENT_ID:#{null}}
+            client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:#{null}}
+
+# Чтобы тестовый контекст не пытался поднимать Redis-коннект.
+spring.autoconfigure.exclude:
+  - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+  - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
